@@ -33,7 +33,7 @@
 
     <!-- Day View -->
     <template v-if="allowedToShowView('day')">
-      <div :class="[calendarClass, 'vdp-datepicker__calendar']" v-show="showDayView" v-bind:style="calendarStyle">
+      <div :class="[calendarClass, 'vdp-datepicker__calendar']" v-show="showDayView" v-bind:style="calendarStyle" @mouseleave="outCeils">
           <header>
               <span
                   @click="isRtl ? nextMonth() : previousMonth()"
@@ -45,7 +45,7 @@
                   class="next"
                   v-bind:class="{ 'disabled' : isRtl ? previousMonthDisabled(pageTimestamp) : nextMonthDisabled(pageTimestamp) }">&gt;</span>
           </header>
-          <div :class="isRtl ? 'flex-rtl' : ''" @mouseleave="outCeils()">
+          <div :class="isRtl ? 'flex-rtl' : ''" @mouseenter="enterOnDatePicker">
             <span class="cell day-header" v-for="d in daysOfWeek" :key="d.timestamp">{{ d }}</span>
             <template v-if="blankDays > 0">
               <span class="cell day blank" v-for="d in blankDays" :key="d.timestamp"></span>
@@ -165,7 +165,12 @@ export default {
       type: String,
       default: '#4bd'
     },
-    rangeSelected: Boolean
+    rangeSelected: Boolean,
+    rangeSelectedMonth: Boolean,
+    currentCalendar: Boolean,
+    rangeSelect: {
+      type: Object
+    }
   },
   data () {
     const startDate = this.openDate ? new Date(this.openDate) : new Date()
@@ -192,10 +197,6 @@ export default {
        * Positioning
        */
       calendarHeight: 0,
-      rangeSelect: {
-        start: undefined,
-        finish: undefined
-      },
       daysObj: {
         days: []
       }
@@ -210,6 +211,22 @@ export default {
     },
     initialView () {
       this.setInitialView()
+    },
+    rangeSelectedMonth (val) {
+      if (!this.rangeSelected) {
+        return false
+      }
+      if (typeof this.rangeSelect.start !== 'undefined' && typeof this.rangeSelect.finish === 'undefined') {
+        if (val && this.rangeSelected) {
+          if (this.rangeSelect.start.getMonth() !== new Date(this.pageTimestamp).getMonth()) {
+            if (!this.currentCalendar) {
+              this.markRangeAll()
+            }
+          }
+        } else {
+          this.unmarkRangeAll()
+        }
+      }
     }
   },
   computed: {
@@ -435,19 +452,6 @@ export default {
       this.$emit('selected', new Date(date))
       this.$emit('input', new Date(date))
     },
-    setRangeDate (timestamp) {
-      const date = new Date(timestamp)
-      if (typeof this.rangeSelect.start === 'undefined' || typeof this.rangeSelect.finish !== 'undefined') {
-        if (typeof this.rangeSelect.finish !== 'undefined') {
-          this.unmarkRangeSelect(this.rangeSelect.start, this.rangeSelect.finish)
-        }
-        this.rangeSelect.start = date
-        this.rangeSelect.finish = undefined
-      } else {
-        this.rangeSelect.finish = date
-        this.$emit('selectedRange', this.rangeSelect)
-      }
-    },
     clearDate () {
       this.selectedDate = null
       this.$emit('selected', null)
@@ -463,7 +467,7 @@ export default {
         return false
       }
       if (this.rangeSelected) {
-        this.setRangeDate(day.timestamp)
+        this.$emit('selectedRange', new Date(day.timestamp))
       } else {
         this.setDate(day.timestamp)
       }
@@ -471,103 +475,97 @@ export default {
         this.close(true)
       }
     },
-    maxMarkRangeSelect (start) {
-      let i
-      let day = DateUtils.daysInMonth(start.getFullYear(), start.getMonth())
-      let date = new Date(start.getFullYear(), start.getMonth(), day)
-
-      for (i = 0; i < this.daysObj.days.length; i++) {
-        if (this.daysObj.days[i].isHighlighted) {
-          if (this.daysObj.days[i].timestamp >= start.getTime()) {
-            date = new Date(this.daysObj.days[i].timestamp)
-            date.setDate(date.getDate() - 1)
-            break
-          }
-        }
-      }
-
-      return date
-    },
-    markRangeSelect (start, finish) {
-      let i = 0
-      let dt
-      let st = start.getTime()
-      let fn = this.maxMarkRangeSelect(start).getTime()
-
-      if (this.daysObj.days.length === 0) {
-        return false
-      }
-
-      for (i = 0; i < this.daysObj.days.length; i++) {
-        dt = new Date(this.daysObj.days[i].timestamp).getTime()
-        if (st <= dt && fn >= dt) {
-          this.daysObj.days[i].style.background = ''
-        }
-      }
-
-      if (finish.getTime() < fn) {
-        fn = finish.getTime()
-      }
-
-      if (st > fn) {
-        this.rangeSelect.start = undefined
-        this.rangeSelect.finish = undefined
-        this.rangeSelect.enter = undefined
-        return false
-      }
-
-      i = 0
-      dt = new Date(this.daysObj.days[0].timestamp).getTime()
-      while (dt <= fn) {
-        if (dt >= st) {
-          this.daysObj.days[i].style.background = this.selectedColor
-        }
-
-        i++
-        if (i < this.daysObj.days.length) {
-          dt = new Date(this.daysObj.days[i].timestamp).getTime()
-        } else {
-          dt++
-        }
-      }
-    },
-    unmarkRangeSelect (start, finish) {
-      let dt
-      let st = start.getTime()
-      let fn = finish.getTime()
+    markRangeAll () {
+      this.$emit('rangeAll', new Date(this.daysObj.days[0].timestamp), 1)
 
       for (let i = 0; i < this.daysObj.days.length; i++) {
-        dt = new Date(this.daysObj.days[i].timestamp).getTime()
-        if (st <= dt && fn >= dt) {
+        if (!this.daysObj.days[i].isHighlighted) {
+          this.daysObj.days[i].style.background = this.selectedColor
+        }
+      }
+    },
+    unmarkRangeAll () {
+      this.$emit('rangeAll', new Date(this.daysObj.days[0].timestamp), -1)
+
+      for (let i = 0; i < this.daysObj.days.length; i++) {
+        if (!this.daysObj.days[i].isHighlighted) {
           this.daysObj.days[i].style.background = ''
+        }
+      }
+    },
+    markRangeFrom (date) {
+      if (typeof date === 'undefined') {
+        return false
+      }
+
+      var dt = date.getTime()
+      for (let i = 0; i < this.daysObj.days.length; i++) {
+        if (this.daysObj.days[i].timestamp >= dt && !this.daysObj.days[i].isHighlighted) {
+          this.daysObj.days[i].style.background = this.selectedColor
+        }
+      }
+    },
+    markRangeTo (date) {
+      if (typeof date === 'undefined') {
+        return false
+      }
+
+      var dt = date.getTime()
+      for (let i = 0; i < this.daysObj.days.length; i++) {
+        if (this.daysObj.days[i].timestamp <= dt && !this.daysObj.days[i].isHighlighted) {
+          this.daysObj.days[i].style.background = this.selectedColor
         }
       }
     },
     setRangeSelect (day) {
       day.style.border = '1px solid ' + this.selectedColor
-      if (!this.rangeSelected) {
+
+      if (!this.rangeSelected || !this.rangeSelectedMonth || typeof this.rangeSelect.finish !== 'undefined') {
         return false
       }
-      if (typeof this.rangeSelect.start !== 'undefined' && typeof this.rangeSelect.finish === 'undefined') {
-        this.markRangeSelect(this.rangeSelect.start, new Date(day.timestamp))
+
+      for (let i = 0; i < this.daysObj.days.length; i++) {
+        if (this.daysObj.days[i].timestamp >= this.rangeSelect.start.getTime() && day.timestamp >= this.daysObj.days[i].timestamp && !this.daysObj.days[i].isHighlighted) {
+          this.daysObj.days[i].style.background = this.selectedColor
+        } else {
+          if (!this.daysObj.days[i].isHighlighted) {
+            this.daysObj.days[i].style.background = ''
+          }
+        }
       }
     },
     outCeilStyle (day) {
       day.style.border = ''
     },
-    outCeils () {
+    outCeils (e) {
       if (!this.rangeSelected) {
         return false
       }
 
-      if (typeof this.rangeSelect.start !== 'undefined' && typeof this.rangeSelect.finish === 'undefined') {
-        let finish = this.maxMarkRangeSelect(this.rangeSelect.start)
-        this.unmarkRangeSelect(this.rangeSelect.start, finish)
+      let b = e.target.getBoundingClientRect()
 
-        this.rangeSelect.start = undefined
-        this.rangeSelect.finish = undefined
-        this.rangeSelect.enter = undefined
+      if (e.clientX < b.left || e.clientY < b.top) {
+        if (typeof this.rangeSelect.start !== 'undefined' && typeof this.rangeSelect.finish === 'undefined') {
+          this.unmarkRangeAll()
+        }
       }
+
+      if (e.clientX > b.right || e.clientY > b.bottom) {
+        if (typeof this.rangeSelect.start !== 'undefined' && typeof this.rangeSelect.finish === 'undefined') {
+          if (this.rangeSelect.start.getMonth() === new Date(this.pageTimestamp).getMonth()) {
+            this.markRangeFrom(this.rangeSelect.start)
+          } else {
+            this.markRangeAll()
+          }
+        }
+      }
+    },
+    enterOnDatePicker (e) {
+      if (!this.rangeSelected) {
+        return false
+      }
+
+      this.$emit('selectedCalendar', new Date(this.pageTimestamp))
     },
     /**
      * @param {Object} month
