@@ -1129,3 +1129,15 @@ $width = 300px
       color #999
       cursor default
 </style>
+
+<style spoke>
+.day {
+  -moz-user-select: -moz-none;
+  -khtml-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -khtml-user-drag: none;
+  -webkit-user-drag: none;
+}
+</style>
